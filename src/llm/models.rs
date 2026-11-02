@@ -16,7 +16,6 @@ pub struct Message {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ContentPart {
     Text(String),
-    /// Image data in base64 format, e.g., "data:image/jpeg;base64,/9j/4AAQSkZJRg..." or just the raw base64 string
     Image {
         data: String,
         mime_type: String,

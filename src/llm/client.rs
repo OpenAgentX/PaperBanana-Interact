@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use anyhow::{anyhow, Result};
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -42,7 +41,7 @@ impl LlmClient {
     }
 
     async fn generate_text_gemini(&self, messages: &[Message]) -> Result<LlmResponse> {
-        let api_key = env::var("GOOGLE_API_KEY").map_err(|_| anyhow!("GOOGLE_API_KEY not set"))?;
+        let api_key = env::var("GOOGLE_API_KEY").unwrap_or_default();
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
             self.model_name, api_key
@@ -94,23 +93,23 @@ impl LlmClient {
             body["systemInstruction"] = sys;
         }
 
-        let res = self.reqwest_client.post(&url)
+        let res: Value = self.reqwest_client.post(&url)
             .json(&body)
             .send()
+            .await?
+            .json()
             .await?;
 
-        let res_json: Value = res.json().await?;
-
-        let text = res_json["candidates"][0]["content"]["parts"][0]["text"]
+        let text = res["candidates"][0]["content"]["parts"][0]["text"]
             .as_str()
-            .ok_or_else(|| anyhow!("Failed to parse Gemini response: {}", res_json))?
+            .ok_or_else(|| anyhow!("Failed to parse Gemini response: {}", res))?
             .to_string();
 
         Ok(LlmResponse { text })
     }
 
     async fn generate_text_openai(&self, messages: &[Message]) -> Result<LlmResponse> {
-        let api_key = env::var("OPENAI_API_KEY").map_err(|_| anyhow!("OPENAI_API_KEY not set"))?;
+        let api_key = env::var("OPENAI_API_KEY").unwrap_or_default();
         let url = "https://api.openai.com/v1/chat/completions";
 
         let mut formatted_messages = Vec::new();
@@ -158,23 +157,24 @@ impl LlmClient {
             "messages": formatted_messages,
         });
 
-        let res = self.reqwest_client.post(url)
+        let res: Value = self.reqwest_client.post(url)
             .header("Authorization", format!("Bearer {}", api_key))
             .json(&body)
             .send()
+            .await?
+            .json()
             .await?;
 
-        let res_json: Value = res.json().await?;
-        let text = res_json["choices"][0]["message"]["content"]
+        let text = res["choices"][0]["message"]["content"]
             .as_str()
-            .ok_or_else(|| anyhow!("Failed to parse OpenAI response: {}", res_json))?
+            .ok_or_else(|| anyhow!("Failed to parse OpenAI response: {}", res))?
             .to_string();
 
         Ok(LlmResponse { text })
     }
 
     async fn generate_text_anthropic(&self, messages: &[Message]) -> Result<LlmResponse> {
-        let api_key = env::var("ANTHROPIC_API_KEY").map_err(|_| anyhow!("ANTHROPIC_API_KEY not set"))?;
+        let api_key = env::var("ANTHROPIC_API_KEY").unwrap_or_default();
         let url = "https://api.anthropic.com/v1/messages";
 
         let mut formatted_messages = Vec::new();
@@ -225,28 +225,25 @@ impl LlmClient {
             body["system"] = json!(system);
         }
 
-        let res = self.reqwest_client.post(url)
+        let res: Value = self.reqwest_client.post(url)
             .header("x-api-key", api_key)
             .header("anthropic-version", "2023-06-01")
             .json(&body)
             .send()
+            .await?
+            .json()
             .await?;
 
-        let res_json: Value = res.json().await?;
-        let text = res_json["content"][0]["text"]
+        let text = res["content"][0]["text"]
             .as_str()
-            .ok_or_else(|| anyhow!("Failed to parse Anthropic response: {}", res_json))?
+            .ok_or_else(|| anyhow!("Failed to parse Anthropic response: {}", res))?
             .to_string();
 
         Ok(LlmResponse { text })
     }
 
     async fn generate_image_google(&self, prompt: &str) -> Result<ImageGenResponse> {
-        // Implement Google Imagen generation logic
-        // As of the original Python code (using Google GenAI SDK for images),
-        // we'll emulate the endpoint.
-        let api_key = env::var("GOOGLE_API_KEY").map_err(|_| anyhow!("GOOGLE_API_KEY not set"))?;
-        // Use v1 for image generation if v1beta doesn't work. The Python genai SDK abstracts this.
+        let api_key = env::var("GOOGLE_API_KEY").unwrap_or_default();
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key={}",
             api_key
@@ -262,14 +259,14 @@ impl LlmClient {
             }
         });
 
-        let res = self.reqwest_client.post(&url)
+        let res: Value = self.reqwest_client.post(&url)
             .json(&body)
             .send()
+            .await?
+            .json()
             .await?;
 
-        let res_json: Value = res.json().await?;
-
-        if let Some(predictions) = res_json.get("predictions").and_then(|p| p.as_array()) {
+        if let Some(predictions) = res.get("predictions").and_then(|p| p.as_array()) {
             let mut images = Vec::new();
             for pred in predictions {
                 if let Some(b64) = pred.get("bytesBase64Encoded").and_then(|b| b.as_str()) {
@@ -281,11 +278,11 @@ impl LlmClient {
             }
         }
 
-        Err(anyhow!("Failed to parse Google image generation response: {}", res_json))
+        Err(anyhow!("Failed to parse Google image generation response: {}", res))
     }
 
     async fn generate_image_openai(&self, prompt: &str) -> Result<ImageGenResponse> {
-        let api_key = env::var("OPENAI_API_KEY").map_err(|_| anyhow!("OPENAI_API_KEY not set"))?;
+        let api_key = env::var("OPENAI_API_KEY").unwrap_or_default();
         let url = "https://api.openai.com/v1/images/generations";
 
         let body = json!({
@@ -295,14 +292,15 @@ impl LlmClient {
             "response_format": "b64_json"
         });
 
-        let res = self.reqwest_client.post(url)
+        let res: Value = self.reqwest_client.post(url)
             .header("Authorization", format!("Bearer {}", api_key))
             .json(&body)
             .send()
+            .await?
+            .json()
             .await?;
 
-        let res_json: Value = res.json().await?;
-        if let Some(data) = res_json.get("data").and_then(|d| d.as_array()) {
+        if let Some(data) = res.get("data").and_then(|d| d.as_array()) {
             let mut images = Vec::new();
             for item in data {
                 if let Some(b64) = item.get("b64_json").and_then(|b| b.as_str()) {
@@ -314,6 +312,6 @@ impl LlmClient {
             }
         }
 
-        Err(anyhow!("Failed to parse OpenAI image generation response: {}", res_json))
+        Err(anyhow!("Failed to parse OpenAI image generation response: {}", res))
     }
 }

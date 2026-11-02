@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -7,6 +8,7 @@ use anyhow::Result;
 pub struct Session {
     pub history: String,
     pub current_image_b64: String,
+    pub detailed_description: String,
 }
 
 impl Session {
@@ -14,6 +16,7 @@ impl Session {
         Self {
             history: String::new(),
             current_image_b64: String::new(),
+            detailed_description: String::new(),
         }
     }
 
@@ -27,11 +30,5 @@ impl Session {
         let content = serde_json::to_string_pretty(self)?;
         fs::write(path, content)?;
         Ok(())
-    }
-}
-
-impl Default for Session {
-    fn default() -> Self {
-        Self::new()
     }
 }

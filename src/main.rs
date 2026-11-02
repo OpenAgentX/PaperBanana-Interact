@@ -9,6 +9,7 @@ use clap::{Parser, Subcommand};
 use anyhow::Result;
 use dotenvy::dotenv;
 
+use agents::base_agent::AgentConfig;
 use refiners::pb_interact::PbInteractRefiner;
 use session::Session;
 use utils::image::read_image_to_base64;
@@ -32,6 +33,9 @@ enum Commands {
 
         #[arg(short, long)]
         image: Option<String>,
+
+        #[arg(long, default_value = "gemini-3.1-pro-preview")]
+        model: String,
     },
     Resume {
         #[arg(short, long)]
@@ -42,19 +46,30 @@ enum Commands {
 
         #[arg(short, long)]
         image: Option<String>,
+
+        #[arg(long, default_value = "gemini-3.1-pro-preview")]
+        model: String,
     },
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    dotenv().ok(); // load .env file if present
+    dotenv().ok();
 
     let cli = Cli::parse();
-    let refiner = PbInteractRefiner::new("gemini-3.1-pro-preview");
 
     match &cli.command {
-        Commands::Start { prompt, output, image } => {
+        Commands::Start { prompt, output, image, model } => {
             println!("Starting new session with prompt: {}", prompt);
+
+            let config = AgentConfig {
+                main_model_name: model.clone(),
+                image_gen_model_name: model.clone(),
+                temperature: 0.7,
+                dataset_dir: "data/MTPaperBananaBench".to_string(),
+                work_dir: ".".to_string(),
+            };
+            let refiner = PbInteractRefiner::new(config);
 
             let initial_b64 = if let Some(img_path) = image {
                 read_image_to_base64(img_path)?
@@ -62,18 +77,31 @@ async fn main() -> Result<()> {
                 String::new()
             };
 
-            let refined_image = refiner.refine(&initial_b64, prompt, "").await?;
+            let method_section = "Initial methodological context.";
+            let figure_caption = "Target figure logic.";
+
+            let (refined_image, new_desc) = refiner.refine(&initial_b64, "", prompt, "", method_section, figure_caption).await?;
 
             let session = Session {
                 history: format!("User: {}\n", prompt),
                 current_image_b64: refined_image,
+                detailed_description: new_desc,
             };
 
             session.save_to_file(output)?;
             println!("Session saved to {}", output);
         }
-        Commands::Resume { prompt, session, image } => {
+        Commands::Resume { prompt, session, image, model } => {
             println!("Resuming session from {}", session);
+
+            let config = AgentConfig {
+                main_model_name: model.clone(),
+                image_gen_model_name: model.clone(),
+                temperature: 0.7,
+                dataset_dir: "data/MTPaperBananaBench".to_string(),
+                work_dir: ".".to_string(),
+            };
+            let refiner = PbInteractRefiner::new(config);
 
             let mut state = Session::load_from_file(session)?;
 
@@ -83,10 +111,14 @@ async fn main() -> Result<()> {
                 state.current_image_b64.clone()
             };
 
-            let refined_image = refiner.refine(&input_b64, prompt, &state.history).await?;
+            let method_section = "Initial methodological context.";
+            let figure_caption = "Target figure logic.";
+
+            let (refined_image, new_desc) = refiner.refine(&input_b64, &state.detailed_description, prompt, &state.history, method_section, figure_caption).await?;
 
             state.history.push_str(&format!("User: {}\n", prompt));
             state.current_image_b64 = refined_image;
+            state.detailed_description = new_desc;
 
             state.save_to_file(session)?;
             println!("Session updated at {}", session);
