@@ -32,3 +32,9 @@ impl Session {
         Ok(())
     }
 }
+
+impl Default for Session {
+    fn default() -> Self {
+        Self::new()
+    }
+}
