@@ -10,3 +10,8 @@ images
 .vscode/
 .agent/
 logs
+
+
+# Added by cargo
+
+/target
