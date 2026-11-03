@@ -4,6 +4,7 @@ pub trait Agent {
     fn name(&self) -> &str;
 }
 
+#[derive(Clone)]
 pub struct AgentConfig {
     pub main_model_name: String,
     pub image_gen_model_name: String,
