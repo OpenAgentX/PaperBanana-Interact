@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use super::base_agent::{Agent, AgentConfig};
+use super::base_agent::{AgentConfig, TaskConfig};
 use crate::llm::client::LlmClient;
 use crate::llm::models::{Message, Role, ContentPart};
 use crate::prompts::agent_prompts::DIAGRAM_CRITIC_AGENT_SYSTEM_PROMPT;
@@ -7,18 +7,26 @@ use serde_json::Value;
 use anyhow::Result;
 
 pub struct CriticAgent {
-    llm: LlmClient,
+    _llm: LlmClient,
+    task_config: TaskConfig,
 }
 
 impl CriticAgent {
     pub fn new(config: AgentConfig) -> Self {
+        let task_config = TaskConfig {
+            task_name: "diagram".to_string(),
+            critique_target: "Target Diagram for Critique:".to_string(),
+            context_labels: vec!["Methodology Section".to_string(), "Figure Caption".to_string()],
+            ..Default::default()
+        };
         Self {
-            llm: LlmClient::new(&config.main_model_name),
+            _llm: LlmClient::new(&config.main_model_name),
+            task_config,
         }
     }
 
     pub async fn process(&self, detailed_description: &str, image_b64: &str, content: &str, visual_intent: &str) -> Result<(String, String)> {
-        let mut msg_content = vec![ContentPart::Text("Target Diagram for Critique:".to_string())];
+        let mut msg_content = vec![ContentPart::Text(self.task_config.critique_target.clone())];
         if !image_b64.is_empty() {
              msg_content.push(ContentPart::Image {
                  data: image_b64.to_string(),
@@ -29,8 +37,10 @@ impl CriticAgent {
         }
 
         msg_content.push(ContentPart::Text(format!(
-            "Detailed Description: {}\nMethodology Section: {}\nFigure Caption: {}\nYour Output:",
-            detailed_description, content, visual_intent
+            "Detailed Description: {}\n{}: {}\n{}: {}\nYour Output:",
+            detailed_description,
+            self.task_config.context_labels[0], content,
+            self.task_config.context_labels[1], visual_intent
         )));
 
         let messages = vec![
@@ -38,7 +48,7 @@ impl CriticAgent {
             Message { role: Role::User, content: msg_content }
         ];
 
-        let res = self.llm.generate_text(&messages).await?;
+        let res = self._llm.generate_text(&messages).await?;
         let cleaned = res.text.replace("```json", "").replace("```", "");
         let parsed: Value = serde_json::from_str(&cleaned).unwrap_or_else(|_| serde_json::json!({}));
 
@@ -47,8 +57,4 @@ impl CriticAgent {
 
         Ok((suggestions, revised_desc))
     }
-}
-
-impl Agent for CriticAgent {
-    fn name(&self) -> &str { "Critic" }
 }
