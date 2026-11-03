@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::agents::base_agent::AgentConfig;
 use crate::agents::visualizer::VisualizerAgent;
 use crate::llm::client::LlmClient;
